@@ -19,7 +19,7 @@ const {
   StringSelectMenuBuilder, TextInputBuilder, TextInputStyle,
 } = require('discord.js');
 const { generateFromMessages, ExportReturnType } = require('discord-html-transcripts');
-const { BRAND, PAYMENT, LICENSE, PANEL_TEXT, SUPPORT_TEXT, PROFILE } = require('./src/config');
+const { BRAND, PAYMENT, LICENSE, PANEL_TEXT, SUPPORT_TEXT, DEV_TEXT, PROFILE } = require('./src/config');
 const store = require('./src/store');
 const api = require('./src/api');
 
@@ -88,90 +88,128 @@ const COMMANDS = [
   new SlashCommandBuilder().setName('support')
     .setDescription('Отправить панель техподдержки в этот канал (после /setup)')
     .setDefaultMemberPermissions(P.Administrator),
+  new SlashCommandBuilder().setName('devpanel')
+    .setDescription('Отправить панель «Заказать разработку» в этот канал (после /setup)')
+    .setDefaultMemberPermissions(P.Administrator),
 ].map((c) => c.toJSON());
 
-// ---------- техподдержка ----------
-const SUPPORT_TOPICS = ['Мод не работает / ошибка', 'Лицензия и ключ', 'Оплата и заказ', 'Перенос на другой сервер', 'Другое'];
+// ---------- тикеты без оплаты: техподдержка и заказ разработки ----------
+// Поле формы: { id, label, desc?, select?: [...] | style: 'short'|'long', required, min?, max }
+const TICKETS = {
+  support: {
+    id: 's', command: 'support', emoji: '🛟', channel: 'поддержка', word: 'Обращение', heading: 'Техподдержка',
+    panelTitle: 'Нужна помощь?', text: SUPPORT_TEXT, button: 'Создать обращение', modalTitle: 'Обращение в поддержку',
+    greet: 'Администратор скоро ответит здесь.\nПриложите скриншоты или лог сервера (`script_*.log`, `*.RPT`), если есть.',
+    fields: [
+      { id: 'topic', label: 'Тема', select: ['Мод не работает / ошибка', 'Лицензия и ключ', 'Оплата и заказ', 'Перенос на другой сервер', 'Другое'] },
+      { id: 'about', label: 'Мод / проект', desc: 'Необязательно', style: 'short', required: false, max: 100 },
+      { id: 'text', label: 'Опишите проблему', desc: 'Что случилось, что пробовали; ключ лицензии сюда не пишите', style: 'long', required: true, min: 10, max: 1500 },
+    ],
+  },
+  dev: {
+    id: 'd', command: 'devpanel', emoji: '🛠️', channel: 'разработка', word: 'Заявка', heading: 'Разработка на заказ',
+    panelTitle: 'Заказать разработку', text: DEV_TEXT, button: 'Оставить заявку', modalTitle: 'Заявка на разработку',
+    greet: 'Заявка принята — обсудим детали, сроки и цену здесь.\nПримеры, референсы и скриншоты можно прикрепить прямо в этот канал.',
+    fields: [
+      { id: 'topic', label: 'Что нужно', select: ['Новый мод', 'Доработка существующего мода', 'Постройки / карта', 'Скрипты и механики сервера', 'Другое'] },
+      { id: 'about', label: 'Проект / сервер', desc: 'Необязательно', style: 'short', required: false, max: 100 },
+      { id: 'budget', label: 'Бюджет и сроки', desc: 'Необязательно, например: до 5000 ₽, за 2 недели', style: 'short', required: false, max: 100 },
+      { id: 'text', label: 'Опишите задачу', desc: 'Что должно получиться, как должно работать', style: 'long', required: true, min: 20, max: 1500 },
+    ],
+  },
+};
+const ticketKind = (customId) => Object.entries(TICKETS).find(([, t]) => customId === `${t.id}:new` || customId === `${t.id}:form`)?.[0];
 
-function buildSupportPanel() {
+function buildTicketPanel(kind) {
+  const t = TICKETS[kind];
   return {
     embeds: [new EmbedBuilder()
       .setColor(BRAND.color)
-      .setAuthor({ name: `${BRAND.name} · Техподдержка`, iconURL: BRAND.logo })
-      .setTitle('🛟  Нужна помощь?')
-      .setDescription(SUPPORT_TEXT)
+      .setAuthor({ name: `${BRAND.name} · ${t.heading}`, iconURL: BRAND.logo })
+      .setTitle(`${t.emoji}  ${t.panelTitle}`)
+      .setDescription(t.text)
       .setThumbnail(BRAND.logo)
       .setFooter({ text: `${BRAND.name} · отвечаем в тикете`, iconURL: BRAND.logo })],
     components: [new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('s:new').setLabel('Создать обращение').setEmoji('🛟').setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Кабинет').setURL(BRAND.cabinet))],
+      new ButtonBuilder().setCustomId(`${t.id}:new`).setLabel(t.button).setEmoji(t.emoji).setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Витрина').setURL(BRAND.site))],
   };
 }
 
-function buildSupportModal() {
-  return new ModalBuilder().setCustomId('s:form').setTitle('🛟 Обращение в поддержку')
-    .addLabelComponents(
-      new LabelBuilder().setLabel('Тема').setStringSelectMenuComponent(new StringSelectMenuBuilder().setCustomId('topic').setPlaceholder('Выберите тему')
-        .addOptions(SUPPORT_TOPICS.map((t) => ({ label: t, value: t })))),
-      new LabelBuilder().setLabel('Мод / проект').setDescription('Необязательно')
-        .setTextInputComponent(new TextInputBuilder().setCustomId('about').setStyle(TextInputStyle.Short).setRequired(false).setMaxLength(100)),
-      new LabelBuilder().setLabel('Опишите проблему').setDescription('Что случилось, что пробовали; ключ лицензии сюда не пишите')
-        .setTextInputComponent(new TextInputBuilder().setCustomId('text').setStyle(TextInputStyle.Paragraph).setRequired(true).setMinLength(10).setMaxLength(1500)));
+function buildTicketModal(kind) {
+  const t = TICKETS[kind];
+  return new ModalBuilder().setCustomId(`${t.id}:form`).setTitle(`${t.emoji} ${t.modalTitle}`)
+    .addLabelComponents(t.fields.map((f) => {
+      const label = new LabelBuilder().setLabel(f.label);
+      if (f.desc) label.setDescription(f.desc);
+      if (f.select) return label.setStringSelectMenuComponent(new StringSelectMenuBuilder().setCustomId(f.id).setPlaceholder('Выберите')
+        .addOptions(f.select.map((o) => ({ label: o, value: o }))));
+      const input = new TextInputBuilder().setCustomId(f.id).setStyle(f.style === 'long' ? TextInputStyle.Paragraph : TextInputStyle.Short)
+        .setRequired(f.required).setMaxLength(f.max);
+      if (f.min) input.setMinLength(f.min);
+      return label.setTextInputComponent(input);
+    }));
 }
 
-async function onSupportNew(interaction) {
+async function onTicketNew(interaction, kind) {
   const g = store.guild(interaction.guild.id);
-  if (!g.settings) return replyError(interaction, 'Поддержка ещё не настроена. Администратору: `/setup`.');
-  const existing = findOpen(g, interaction.user.id, 'support');
-  if (existing) return replyError(interaction, `У вас уже есть открытое обращение: <#${existing[0]}>`);
-  await interaction.showModal(buildSupportModal());
+  if (!g.settings) return replyError(interaction, 'Тикеты ещё не настроены. Администратору: `/setup`.');
+  const existing = findOpen(g, interaction.user.id, kind);
+  if (existing) return replyError(interaction, `У вас уже есть открытый тикет: <#${existing[0]}>`);
+  await interaction.showModal(buildTicketModal(kind));
 }
 
-async function onSupportForm(interaction) {
+async function onTicketForm(interaction, kind) {
+  const t = TICKETS[kind];
   const guild = interaction.guild;
   const g = store.guild(guild.id);
   const s = g.settings;
   const user = interaction.user;
-  if (!s) return replyError(interaction, 'Поддержка не настроена.');
-  const topic = interaction.fields.getStringSelectValues('topic')[0];
-  const about = interaction.fields.getTextInputValue('about')?.trim() || '';
-  const text = interaction.fields.getTextInputValue('text').trim();
+  if (!s) return replyError(interaction, 'Тикеты не настроены.');
+  const values = Object.fromEntries(t.fields.map((f) => [f.id, f.select
+    ? interaction.fields.getStringSelectValues(f.id)[0]
+    : (interaction.fields.getTextInputValue(f.id) || '').trim()]));
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-  if (findOpen(g, user.id, 'support')) return replyError(interaction, 'У вас уже есть открытое обращение.');
-  if (opening.has(user.id)) return replyError(interaction, 'Обращение уже создаётся, подождите.');
+  if (findOpen(g, user.id, kind)) return replyError(interaction, 'У вас уже есть открытый тикет.');
+  if (opening.has(user.id)) return replyError(interaction, 'Тикет уже создаётся, подождите.');
   opening.add(user.id);
   try {
-    g.supportCounter = (g.supportCounter || 0) + 1;
-    const number = g.supportCounter;
+    g.counters ||= {};
+    if (kind === 'support' && g.supportCounter) { g.counters.support = g.supportCounter; delete g.supportCounter; } // старый счётчик
+    g.counters[kind] = (g.counters[kind] || 0) + 1;
+    const number = g.counters[kind];
     store.save();
     const channel = await guild.channels.create({
-      name: `🛟・поддержка-${pad(number)}`,
+      name: `${t.emoji}・${t.channel}-${pad(number)}`,
       type: ChannelType.GuildText,
       parent: guild.channels.cache.has(s.category) ? s.category : null,
-      topic: `Обращение #${pad(number)} · ${user.username} (${user.id}) · ${topic}`,
+      topic: `${t.word} #${pad(number)} · ${user.username} (${user.id}) · ${values.topic}`,
       permissionOverwrites: ticketPerms(guild, s, user.id),
     });
-    g.open[channel.id] = { kind: 'support', number, user: user.id, username: user.username, openedAt: Date.now(), title: topic, about };
+    g.open[channel.id] = { kind, number, user: user.id, username: user.username, openedAt: Date.now(), title: values.topic, about: values.about };
     store.save();
     const embed = new EmbedBuilder()
       .setColor(BRAND.color)
-      .setAuthor({ name: `Обращение #${pad(number)}`, iconURL: user.displayAvatarURL() })
-      .setTitle(`🛟 ${topic}`)
-      .setDescription(`Привет, ${user}! Администратор скоро ответит здесь.\nПриложите скриншоты или лог сервера (\`script_*.log\`, \`*.RPT\`), если есть.\n\n**Описание:**\n${cut(text, 1500)}`)
+      .setAuthor({ name: `${t.word} #${pad(number)}`, iconURL: user.displayAvatarURL() })
+      .setTitle(`${t.emoji} ${values.topic}`)
+      .setDescription(`Привет, ${user}! ${t.greet}\n\n**Описание:**\n${cut(values.text, 1500)}`)
       .addFields({ name: 'Discord', value: `${user} · \`${user.id}\``, inline: true })
-      .setFooter({ text: `${BRAND.name} · закрыть обращение — кнопка ниже` })
+      .setFooter({ text: `${BRAND.name} · закрыть тикет — кнопка ниже` })
       .setTimestamp();
-    if (about) embed.addFields({ name: 'Мод / проект', value: cut(about, 1024), inline: true });
+    for (const f of t.fields) {
+      if (f.id === 'topic' || f.id === 'text' || !values[f.id]) continue;
+      embed.addFields({ name: f.label, value: cut(values[f.id], 1024), inline: true });
+    }
     await channel.send({
       content: `${user} · <@&${s.role}>`, embeds: [embed],
       components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('o:close').setLabel('Закрыть').setEmoji('🔒').setStyle(ButtonStyle.Danger))],
       allowedMentions: { users: [user.id], roles: [s.role] },
     });
     await interaction.editReply({
-      embeds: [notice(`✅ **Обращение #${pad(number)} создано:** ${channel}`, OK)],
+      embeds: [notice(`✅ **${t.word} #${pad(number)} создан${t.word.endsWith('а') ? 'а' : 'о'}:** ${channel}`, OK)],
       components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Перейти').setURL(channel.url))],
     });
-    await log(guild, new EmbedBuilder().setColor(BRAND.color).setTitle(`🛟 Обращение #${pad(number)} — ${topic}`)
+    await log(guild, new EmbedBuilder().setColor(BRAND.color).setTitle(`${t.emoji} ${t.word} #${pad(number)} — ${values.topic}`)
       .addFields({ name: 'Пользователь', value: `${user}`, inline: true }, { name: 'Канал', value: `${channel}`, inline: true })
       .setTimestamp());
   } finally {
@@ -382,7 +420,7 @@ const issuing = new Set();
 async function onPaid(interaction) {
   const g = store.guild(interaction.guild.id);
   const order = g.open[interaction.channelId];
-  if (!order || order.kind === 'support') return replyError(interaction, 'Этот заказ уже закрыт.');
+  if (!order || TICKETS[order.kind]) return replyError(interaction, 'Этот заказ уже закрыт.');
   if (!isStaff(interaction.member, g.settings)) return replyError(interaction, 'Подтвердить оплату может только администрация.');
   if (order.issued) return replyError(interaction, `Ключ уже выдан ${ts(order.issued.at, 'R')}.`);
   if (issuing.has(interaction.channelId)) return replyError(interaction, 'Ключ уже выдаётся.');
@@ -442,9 +480,9 @@ async function onCloseButton(interaction) {
   const g = store.guild(interaction.guild.id);
   const order = g.open[interaction.channelId];
   if (!order) return replyError(interaction, 'Этот тикет уже закрыт.');
-  const sup = order.kind === 'support';
-  if (!isStaff(interaction.member, g.settings) && order.user !== interaction.user.id) return replyError(interaction, `Закрыть ${sup ? 'обращение' : 'заказ'} может только автор или администрация.`);
-  await interaction.showModal(new ModalBuilder().setCustomId('o:closeform').setTitle(sup ? '🔒 Закрыть обращение' : '🔒 Закрыть заказ').addLabelComponents(
+  const sup = Boolean(TICKETS[order.kind]);
+  if (!isStaff(interaction.member, g.settings) && order.user !== interaction.user.id) return replyError(interaction, 'Закрыть тикет может только автор или администрация.');
+  await interaction.showModal(new ModalBuilder().setCustomId('o:closeform').setTitle(sup ? '🔒 Закрыть тикет' : '🔒 Закрыть заказ').addLabelComponents(
     new LabelBuilder().setLabel('Причина (необязательно)').setTextInputComponent(new TextInputBuilder()
       .setCustomId('reason').setStyle(TextInputStyle.Short).setRequired(false).setMaxLength(300).setPlaceholder(sup ? 'Например: вопрос решён' : 'Например: ключ выдан'))));
 }
@@ -468,8 +506,8 @@ async function closeOrder(interaction) {
   if (!order) return replyError(interaction, 'Этот тикет уже закрыт.');
   if (closing.has(channel.id)) return replyError(interaction, 'Тикет уже закрывается.');
   closing.add(channel.id);
-  const sup = order.kind === 'support';
-  const word = sup ? 'Обращение' : 'Заказ';
+  const sup = Boolean(TICKETS[order.kind]);
+  const word = TICKETS[order.kind]?.word || 'Заказ';
   const reason = interaction.fields.getTextInputValue('reason')?.trim() || 'не указана';
   const name = `#${pad(order.number)}`;
   await interaction.reply({ embeds: [notice(`🔒 **${word} закрывается.** Закрыл: ${interaction.user}\nПричина: ${reason}\n\nСохраняю историю, канал удалится через 10 секунд…`, BAD)] });
@@ -480,10 +518,10 @@ async function closeOrder(interaction) {
     const fields = [{ name: sup ? 'Автор' : 'Покупатель', value: `<@${order.user}>`, inline: true }, { name: 'Закрыл', value: `${interaction.user}`, inline: true }];
     if (!sup) fields.push({ name: 'Ключ', value: order.issued ? `выдан \`${order.issued.build}\`` : 'не выдан', inline: true });
     fields.push({ name: 'Открыт', value: ts(order.openedAt), inline: true }, { name: 'Причина', value: cut(reason, 1024) });
-    await log(interaction.guild, new EmbedBuilder().setColor(0x7d8c99).setTitle(`📕 ${word} ${name} закрыт${sup ? 'о' : ''} — ${order.title}`)
+    await log(interaction.guild, new EmbedBuilder().setColor(0x7d8c99).setTitle(`📕 ${word} ${name} закрыт${{ Обращение: 'о', Заявка: 'а' }[word] || ''} — ${order.title}`)
       .addFields(fields)
       .setFooter({ text: 'История переписки во вложении' }).setTimestamp(),
-    [new AttachmentBuilder(html, { name: `${sup ? 'support' : 'order'}-${pad(order.number)}.html` })]);
+    [new AttachmentBuilder(html, { name: `${order.kind || 'order'}-${pad(order.number)}.html` })]);
   } catch (e) {
     console.error('[закрытие]', e);
   }
@@ -505,21 +543,23 @@ client.on(Events.InteractionCreate, async (interaction) => {
         if (g.settings) { g.settings.panel = interaction.channelId; g.settings.panelMessage = msg.id; store.save(); }
         return interaction.reply({ embeds: [notice('✅ Панель отправлена', OK)], flags: MessageFlags.Ephemeral });
       }
-      if (interaction.commandName === 'support') {
-        if (!store.guild(interaction.guild.id).settings) return replyError(interaction, 'Сначала выполните `/setup` — поддержка использует ту же роль, категорию и лог.');
-        await interaction.channel.send(buildSupportPanel());
-        return interaction.reply({ embeds: [notice('✅ Панель поддержки отправлена', OK)], flags: MessageFlags.Ephemeral });
+      const panelKind = Object.keys(TICKETS).find((k) => TICKETS[k].command === interaction.commandName);
+      if (panelKind) {
+        if (!store.guild(interaction.guild.id).settings) return replyError(interaction, 'Сначала выполните `/setup` — тикеты используют ту же роль, категорию и лог.');
+        await interaction.channel.send(buildTicketPanel(panelKind));
+        return interaction.reply({ embeds: [notice('✅ Панель отправлена', OK)], flags: MessageFlags.Ephemeral });
       }
     }
+    const kind = ticketKind(interaction.customId);
+    if (kind && interaction.isButton()) return await onTicketNew(interaction, kind);
+    if (kind && interaction.isModalSubmit()) return await onTicketForm(interaction, kind);
     if (interaction.isButton()) {
-      if (interaction.customId === 's:new') return await onSupportNew(interaction);
       if (interaction.customId === 'o:new') return await onNew(interaction);
       if (interaction.customId === 'o:paid') return await onPaid(interaction);
       if (interaction.customId === 'o:close') return await onCloseButton(interaction);
     }
     if (interaction.isModalSubmit()) {
       if (interaction.customId === 'o:form') return await onForm(interaction);
-      if (interaction.customId === 's:form') return await onSupportForm(interaction);
       if (interaction.customId === 'o:closeform') return await closeOrder(interaction);
     }
   } catch (e) {
@@ -548,4 +588,4 @@ if (require.main === module) {
   })();
 }
 
-module.exports = { buildPanel, buildModal, buildSupportPanel, buildSupportModal, orderButtons, installText, COMMANDS };
+module.exports = { buildPanel, buildModal, buildTicketPanel, buildTicketModal, ticketKind, orderButtons, installText, COMMANDS };

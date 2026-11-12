@@ -35,11 +35,18 @@ assert(bot.installText('RoofRack').includes('Licenses\\RoofRack.txt'));
 assert(bot.installText('RoofRack').length < 4000, 'инструкция влезает в embed');
 assert(bot.COMMANDS.find((c) => c.name === 'setup'));
 assert(bot.COMMANDS.find((c) => c.name === 'support'));
-const sp = bot.buildSupportPanel();
-assert.strictEqual(sp.components[0].toJSON().components[0].custom_id, 's:new');
-assert(sp.embeds[0].toJSON().description.length < 4096);
-const sm = bot.buildSupportModal().toJSON();
-assert.strictEqual(sm.custom_id, 's:form');
-assert.strictEqual(sm.components.length, 3, 'тема, мод/проект, описание');
+assert(bot.COMMANDS.find((c) => c.name === 'devpanel'));
+for (const [kind, id, n] of [['support', 's', 3], ['dev', 'd', 4]]) {
+  const p = bot.buildTicketPanel(kind);
+  assert.strictEqual(p.components[0].toJSON().components[0].custom_id, `${id}:new`);
+  assert(p.embeds[0].toJSON().description.length < 4096);
+  const m = bot.buildTicketModal(kind).toJSON();
+  assert.strictEqual(m.custom_id, `${id}:form`);
+  assert.strictEqual(m.components.length, n, `${kind}: полей в форме`);
+  assert(m.components.length <= 5, 'Discord: не больше 5 полей');
+  assert.strictEqual(bot.ticketKind(`${id}:new`), kind);
+  assert.strictEqual(bot.ticketKind(`${id}:form`), kind);
+}
+assert.strictEqual(bot.ticketKind('o:new'), undefined, 'кнопки заказа не путаются с тикетами');
 console.log('selftest OK');
 process.exit(0);
