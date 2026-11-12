@@ -34,5 +34,12 @@ assert(bot.orderButtons(true).toJSON().components[0].disabled, 'после вы�
 assert(bot.installText('RoofRack').includes('Licenses\\RoofRack.txt'));
 assert(bot.installText('RoofRack').length < 4000, 'инструкция влезает в embed');
 assert(bot.COMMANDS.find((c) => c.name === 'setup'));
+assert(bot.COMMANDS.find((c) => c.name === 'support'));
+const sp = bot.buildSupportPanel();
+assert.strictEqual(sp.components[0].toJSON().components[0].custom_id, 's:new');
+assert(sp.embeds[0].toJSON().description.length < 4096);
+const sm = bot.buildSupportModal().toJSON();
+assert.strictEqual(sm.custom_id, 's:form');
+assert.strictEqual(sm.components.length, 3, 'тема, мод/проект, описание');
 console.log('selftest OK');
 process.exit(0);
