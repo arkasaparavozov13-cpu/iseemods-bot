@@ -23,4 +23,7 @@ function guild(id) {
   return data.guilds[id];
 }
 
-module.exports = { guild, save };
+// общие отметки бота (например, какая версия профиля уже выставлена)
+const meta = () => (data.meta ||= {});
+
+module.exports = { guild, meta, save };

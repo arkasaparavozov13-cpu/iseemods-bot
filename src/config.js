@@ -5,6 +5,21 @@ module.exports = {
     color: 0xd8d8d8,           // серебро, как на сайте
     site: 'http://iseee.xsph.ru/',
     cabinet: 'http://iseee.xsph.ru/license.php?me',
+    // картинки лежат в папке art/ репозитория (он публичный) — Discord берёт их по ссылке
+    banner: 'https://raw.githubusercontent.com/arkasaparavozov13-cpu/iseemods-bot/main/art/panel_banner.png',
+    logo: 'https://raw.githubusercontent.com/arkasaparavozov13-cpu/iseemods-bot/main/art/icon.png',
+  },
+  // профиль бота: аватар art/icon.png, баннер art/profile_banner.png и «Обо мне».
+  // Поменяли что-то — увеличьте version, бот выставит заново при запуске.
+  PROFILE: {
+    version: 1,
+    about: [
+      '◈ Магазин модов Isee MODS для DayZ-серверов',
+      '',
+      '🛒 Заказ — кнопка «Купить мод» в #создать-заказ',
+      '🔑 Ключ лицензии — сразу после оплаты',
+      '🌐 iseee.xsph.ru',
+    ].join('\n'),
   },
   // способы оплаты в форме заказа
   PAYMENT: ['Карта РФ', 'СБП', 'Криптовалюта', 'Другое — обсудим в тикете'],
