@@ -36,6 +36,10 @@ assert(bot.installText('RoofRack').length < 4000, 'инструкция влез
 assert(bot.COMMANDS.find((c) => c.name === 'setup'));
 assert(bot.COMMANDS.find((c) => c.name === 'support'));
 assert(bot.COMMANDS.find((c) => c.name === 'devpanel'));
+const rules = bot.buildRules().embeds.map((e) => e.toJSON());
+assert(rules.length >= 2 && rules.length <= 10, 'правила: баннер + разделы, не больше 10');
+assert(rules.every((e) => !e.description || e.description.length <= 4096), 'раздел влезает в embed');
+assert(rules.reduce((n, e) => n + (e.description || '').length + (e.title || '').length, 0) < 6000, 'всё сообщение < 6000 символов');
 for (const [kind, id, n] of [['support', 's', 3], ['dev', 'd', 4]]) {
   const p = bot.buildTicketPanel(kind);
   assert.strictEqual(p.components[0].toJSON().components[0].custom_id, `${id}:new`);

@@ -19,7 +19,7 @@ const {
   StringSelectMenuBuilder, TextInputBuilder, TextInputStyle,
 } = require('discord.js');
 const { generateFromMessages, ExportReturnType } = require('discord-html-transcripts');
-const { BRAND, PAYMENT, LICENSE, PANEL_TEXT, SUPPORT_TEXT, DEV_TEXT, PROFILE } = require('./src/config');
+const { BRAND, PAYMENT, LICENSE, PANEL_TEXT, SUPPORT_TEXT, DEV_TEXT, RULES, PROFILE } = require('./src/config');
 const store = require('./src/store');
 const api = require('./src/api');
 
@@ -91,7 +91,18 @@ const COMMANDS = [
   new SlashCommandBuilder().setName('devpanel')
     .setDescription('Отправить панель «Заказать разработку» в этот канал (после /setup)')
     .setDefaultMemberPermissions(P.Administrator),
+  new SlashCommandBuilder().setName('rules')
+    .setDescription('Отправить правила сервера в этот канал')
+    .setDefaultMemberPermissions(P.Administrator),
 ].map((c) => c.toJSON());
+
+function buildRules() {
+  const head = new EmbedBuilder().setColor(BRAND.color).setImage(BRAND.banner)
+    .setAuthor({ name: `${BRAND.name} · Правила сервера`, iconURL: BRAND.logo });
+  const parts = RULES.map((r) => new EmbedBuilder().setColor(BRAND.color).setTitle(r.title).setDescription(r.text));
+  parts[parts.length - 1].setFooter({ text: BRAND.name, iconURL: BRAND.logo }).setTimestamp();
+  return { embeds: [head, ...parts].slice(0, 10) };
+}
 
 // ---------- тикеты без оплаты: техподдержка и заказ разработки ----------
 // Поле формы: { id, label, desc?, select?: [...] | style: 'short'|'long', required, min?, max }
@@ -543,6 +554,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
         if (g.settings) { g.settings.panel = interaction.channelId; g.settings.panelMessage = msg.id; store.save(); }
         return interaction.reply({ embeds: [notice('✅ Панель отправлена', OK)], flags: MessageFlags.Ephemeral });
       }
+      if (interaction.commandName === 'rules') {
+        await interaction.channel.send(buildRules());
+        return interaction.reply({ embeds: [notice('✅ Правила отправлены', OK)], flags: MessageFlags.Ephemeral });
+      }
       const panelKind = Object.keys(TICKETS).find((k) => TICKETS[k].command === interaction.commandName);
       if (panelKind) {
         if (!store.guild(interaction.guild.id).settings) return replyError(interaction, 'Сначала выполните `/setup` — тикеты используют ту же роль, категорию и лог.');
@@ -588,4 +603,4 @@ if (require.main === module) {
   })();
 }
 
-module.exports = { buildPanel, buildModal, buildTicketPanel, buildTicketModal, ticketKind, orderButtons, installText, COMMANDS };
+module.exports = { buildPanel, buildModal, buildRules, buildTicketPanel, buildTicketModal, ticketKind, orderButtons, installText, COMMANDS };
