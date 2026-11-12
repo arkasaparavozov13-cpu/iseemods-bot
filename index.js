@@ -19,7 +19,7 @@ const {
   StringSelectMenuBuilder, TextInputBuilder, TextInputStyle,
 } = require('discord.js');
 const { generateFromMessages, ExportReturnType } = require('discord-html-transcripts');
-const { BRAND, PAYMENT, LICENSE, PANEL_TEXT } = require('./src/config');
+const { BRAND, PAYMENT, LICENSE, PANEL_TEXT, PROFILE } = require('./src/config');
 const store = require('./src/store');
 const api = require('./src/api');
 
@@ -90,18 +90,44 @@ const COMMANDS = [
 // ---------- панель ----------
 function buildPanel() {
   const mods = api.cachedMods();
+  // 1: баннер, 2: как купить + список, 3..: карточка на мод с обложкой (всего до 10 embed)
+  const banner = new EmbedBuilder().setColor(BRAND.color).setImage(BRAND.banner);
   const embed = new EmbedBuilder()
     .setColor(BRAND.color)
-    .setAuthor({ name: `${BRAND.name} · Магазин` })
+    .setAuthor({ name: `${BRAND.name} · Магазин`, iconURL: BRAND.logo })
     .setTitle('◈  Купить мод')
     .setDescription(PANEL_TEXT)
-    .setFooter({ text: `${BRAND.name} · оплата и выдача ключа — в тикете` });
+    .setThumbnail(BRAND.logo)
+    .setFooter({ text: `${BRAND.name} · оплата и выдача ключа — в тикете`, iconURL: BRAND.logo });
   if (mods.length) embed.addFields({ name: 'В продаже', value: cut(mods.map((m) => `◇ **${m.title}**${m.price ? ` — ${m.price}` : ''}`).join('\n'), 1024) });
+  const cards = mods.slice(0, 8).map((m) => {
+    const card = new EmbedBuilder().setColor(BRAND.color).setTitle(`◇  ${cut(m.title, 240)}`).setURL(BRAND.site);
+    if (m.descr) card.setDescription(cut(m.descr, 300));
+    if (m.price) card.addFields({ name: 'Цена', value: cut(m.price, 100), inline: true });
+    if (m.img) card.setThumbnail(m.img);
+    return card;
+  });
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('o:new').setLabel('Купить мод').setEmoji('🛒').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Витрина').setURL(BRAND.site),
     new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Кабинет').setURL(BRAND.cabinet));
-  return { embeds: [embed], components: [row] };
+  return { embeds: [banner, embed, ...cards], components: [row] };
+}
+
+// Аватар, баннер и «Обо мне» — один раз на версию PROFILE (Discord ограничивает частую смену аватара)
+async function applyProfile() {
+  const meta = store.meta();
+  if (meta.profile === PROFILE.version) return;
+  const uri = (f) => 'data:image/png;base64,' + fs.readFileSync(path.join(__dirname, 'art', f)).toString('base64');
+  try {
+    await client.rest.patch('/users/@me', { body: { avatar: uri('icon.png'), banner: uri('profile_banner.png') } });
+    await client.rest.patch('/applications/@me', { body: { description: PROFILE.about } });
+    meta.profile = PROFILE.version;
+    store.save();
+    console.log('[профиль] аватар, баннер и описание обновлены');
+  } catch (e) {
+    console.error('[профиль]', e.message); // не критично: попробуем при следующем запуске
+  }
 }
 
 function buildModal(mods) {
@@ -399,6 +425,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 client.once(Events.ClientReady, async () => {
   console.log(`[бот] ${client.user.tag} онлайн, серверов: ${client.guilds.cache.size}`);
   client.user.setActivity('заказы модов', { type: ActivityType.Watching });
+  await applyProfile();
   for (const guild of client.guilds.cache.values()) await guild.commands.set(COMMANDS).catch((e) => console.error('[команды]', guild.name, e.message));
   await api.refreshMods();
   console.log(`[сайт] модов на витрине: ${api.cachedMods().length}`);

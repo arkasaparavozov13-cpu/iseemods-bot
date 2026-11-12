@@ -5,12 +5,19 @@ const api = require('./src/api');
 const bot = require('./index.js');
 
 // подставляем список модов, как будто пришёл с сайта
-const mods = [{ name: 'RoofRack', title: 'Roof Rack', price: '2500 ₽' }, { name: 'NoPrice', title: 'Без цены', price: '' }];
+const mods = [{ name: 'RoofRack', title: 'Roof Rack', price: '2500 ₽', descr: 'Багажник', img: 'http://x/license.php?img=r.webp' }, { name: 'NoPrice', title: 'Без цены', price: '' }];
 api.cachedMods = () => mods;
 
 const panel = bot.buildPanel();
-const pj = panel.embeds[0].toJSON();
-assert(pj.fields[0].value.includes('**Roof Rack** — 2500 ₽'), 'панель показывает мод с ценой');
+const pe = panel.embeds.map((e) => e.toJSON());
+assert(pe[0].image.url.endsWith('panel_banner.png'), 'первым идёт баннер');
+assert(pe[1].fields[0].value.includes('**Roof Rack** — 2500 ₽'), 'панель показывает мод с ценой');
+assert.strictEqual(pe.length, 4, 'баннер + описание + 2 карточки');
+assert.strictEqual(pe[2].thumbnail.url, mods[0].img, 'карточка с обложкой');
+assert(!pe[3].thumbnail && !pe[3].fields, 'карточка без цены и обложки — без пустых полей');
+api.cachedMods = () => Array.from({ length: 20 }, (_, i) => ({ name: `M${i}`, title: `Мод ${i}`, price: '' }));
+assert(bot.buildPanel().embeds.length <= 10, 'не больше 10 embed в сообщении');
+api.cachedMods = () => mods;
 assert.strictEqual(panel.components[0].toJSON().components[0].custom_id, 'o:new');
 
 const modal = bot.buildModal(mods).toJSON();
