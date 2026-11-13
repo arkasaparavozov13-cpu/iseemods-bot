@@ -1,8 +1,10 @@
-// Хранилище в data/store.json: настройки сервера, счётчик и открытые заказы.
+// Хранилище store.json: настройки сервера, счётчик и открытые заказы.
 const fs = require('fs');
 const path = require('path');
 
-const FILE = path.join(__dirname, '..', 'data', 'store.json');
+// на Bothost пересборка из Git стирает папку бота — /app/shared (общее хранилище) переживает её
+const SHARED = '/app/shared';
+const FILE = path.join(fs.existsSync(SHARED) ? SHARED : path.join(__dirname, '..', 'data'), 'store.json');
 let data = { guilds: {} };
 
 try {
