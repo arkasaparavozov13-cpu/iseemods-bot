@@ -231,7 +231,7 @@ async function onTicketForm(interaction, kind) {
 // ---------- панель ----------
 function buildPanel() {
   const mods = api.cachedMods();
-  // 1: баннер, 2: как купить + список, 3..: карточка на мод с обложкой (всего до 10 embed)
+  // 1: баннер, 2: как купить + список (карточки модов — только в #каталог-модов)
   const banner = new EmbedBuilder().setColor(BRAND.color).setImage(BRAND.banner);
   const embed = new EmbedBuilder()
     .setColor(BRAND.color)
@@ -241,18 +241,11 @@ function buildPanel() {
     .setThumbnail(BRAND.logo)
     .setFooter({ text: `${BRAND.name} · оплата и выдача ключа — в тикете`, iconURL: BRAND.logo });
   if (mods.length) embed.addFields({ name: 'В продаже', value: cut(mods.map((m) => `◇ **${m.title}**${m.price ? ` — ${m.price}` : ''}`).join('\n'), 1024) });
-  const cards = mods.slice(0, 8).map((m) => {
-    const card = new EmbedBuilder().setColor(BRAND.color).setTitle(`◇  ${cut(m.title, 240)}`).setURL(BRAND.site);
-    if (m.descr) card.setDescription(cut(m.descr, 300));
-    if (m.price) card.addFields({ name: 'Цена', value: cut(m.price, 100), inline: true });
-    if (m.img) card.setThumbnail(m.img);
-    return card;
-  });
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('o:new').setLabel('Купить мод').setEmoji('🛒').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Витрина').setURL(BRAND.site),
     new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Кабинет').setURL(BRAND.cabinet));
-  return { embeds: [banner, embed, ...cards], components: [row] };
+  return { embeds: [banner, embed], components: [row] };
 }
 
 // Аватар, баннер и «Обо мне» — один раз на версию PROFILE (Discord ограничивает частую смену аватара)
