@@ -290,8 +290,12 @@ async function setup(interaction) {
     { id: role.id, allow: [P.ViewChannel, P.SendMessages, P.ReadMessageHistory] },
     { id: client.user.id, allow: [P.ViewChannel, P.SendMessages, P.ManageChannels, P.EmbedLinks, P.AttachFiles, P.ReadMessageHistory] },
   ];
-  const cat = await guild.channels.create({ name: '🛒 Заказы', type: ChannelType.GuildCategory, permissionOverwrites: hidden });
-  const logs = await guild.channels.create({ name: '📜・заказы-лог', type: ChannelType.GuildText, parent: cat.id, permissionOverwrites: hidden, topic: 'Заказы: открытие, выдача ключей, закрытие и история' });
+  // повторный /setup (например, после потери настроек) берёт уже созданные категорию и лог
+  const chans = await guild.channels.fetch();
+  const cat = chans.find((c) => c?.type === ChannelType.GuildCategory && c.name === '🛒 Заказы')
+    || await guild.channels.create({ name: '🛒 Заказы', type: ChannelType.GuildCategory, permissionOverwrites: hidden });
+  const logs = chans.find((c) => c?.type === ChannelType.GuildText && c.name === '📜・заказы-лог' && c.parentId === cat.id)
+    || await guild.channels.create({ name: '📜・заказы-лог', type: ChannelType.GuildText, parent: cat.id, permissionOverwrites: hidden, topic: 'Заказы: открытие, выдача ключей, закрытие и история' });
   await api.refreshMods();
   const msg = await panel.send(buildPanel());
   const g = store.guild(guild.id);
